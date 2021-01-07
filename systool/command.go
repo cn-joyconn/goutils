@@ -5,7 +5,7 @@ import (
 	"os/exec"
 	"time"
 	"log"
-	"github.com/cn-joyconn/go-joytools/strtool"
+	"github.com/cn-joyconn/goutils/strtool"
 )
 
 func CmdOut(name string, arg ...string) (string, error) {

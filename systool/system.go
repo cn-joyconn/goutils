@@ -10,8 +10,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"github.com/cn-joyconn/go-joytools/convertor"
-	"github.com/cn-joyconn/go-joytools/filetool"
+	"github.com/cn-joyconn/goutils/convertor"
+	"github.com/cn-joyconn/goutils/filetool"
 )
 
 func WritePidFile(pidFilePath string) error {
