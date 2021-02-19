@@ -1,3 +1,3 @@
 module github.com/cn-joyconn/goutils
 
-go 1.15
+go 1.16
