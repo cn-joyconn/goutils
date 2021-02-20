@@ -48,7 +48,7 @@ func InIntArray(s int, arr []int) bool {
 	return false
 }
 
-func removeDuplicateStr(arr []string) (newArr []string) {
+func RemoveDuplicateStr(arr []string) (newArr []string) {
 	newArr = make([]string, 0)
 	for i := 0; i < len(arr); i++ {
 		repeat := false
@@ -64,7 +64,7 @@ func removeDuplicateStr(arr []string) (newArr []string) {
 	}
 	return
 }
-func removeDuplicateInt(arr []int) (newArr []int) {
+func RemoveDuplicateInt(arr []int) (newArr []int) {
 	newArr = make([]int, 0)
 	for i := 0; i < len(arr); i++ {
 		repeat := false
@@ -80,7 +80,7 @@ func removeDuplicateInt(arr []int) (newArr []int) {
 	}
 	return
 }
-func removeDuplicateInt64(arr []int64) (newArr []int64) {
+func RemoveDuplicateInt64(arr []int64) (newArr []int64) {
 	newArr = make([]int64, 0)
 	for i := 0; i < len(arr); i++ {
 		repeat := false
