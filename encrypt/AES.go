@@ -1,9 +1,11 @@
 package encrypt
-import(
+
+import (
 	"bytes"
 	"crypto/aes"
-	"crypto/cipher"	
+	"crypto/cipher"
 	"crypto/rand"
+	"errors"
 	"io"
 )
 
@@ -13,20 +15,20 @@ func AesEncryptCBC(origData []byte, key []byte) (encrypted []byte) {
 	// NewCipher该函数限制了输入k的长度必须为16, 24或者32
 	block, _ := aes.NewCipher(key)
 	blockSize := block.BlockSize()                              // 获取秘钥块的长度
-	origData = pkcs5Padding(origData, blockSize)                // 补全码
+	origData = PKCS7Padding(origData, blockSize)                // 补全码
 	blockMode := cipher.NewCBCEncrypter(block, key[:blockSize]) // 加密模式
 	encrypted = make([]byte, len(origData))                     // 创建数组
 	blockMode.CryptBlocks(encrypted, origData)                  // 加密
 	return encrypted
 }
-func AesDecryptCBC(encrypted []byte, key []byte) (decrypted []byte) {
+func AesDecryptCBC(encrypted []byte, key []byte) (decrypted []byte, err error) {
 	block, _ := aes.NewCipher(key)                              // 分组秘钥
 	blockSize := block.BlockSize()                              // 获取秘钥块的长度
 	blockMode := cipher.NewCBCDecrypter(block, key[:blockSize]) // 加密模式
 	decrypted = make([]byte, len(encrypted))                    // 创建数组
 	blockMode.CryptBlocks(decrypted, encrypted)                 // 解密
-	decrypted = pkcs5UnPadding(decrypted)                       // 去除补全码
-	return decrypted
+	decrypted, err = PKCS7UnPadding(decrypted)                  // 去除补全码
+	return decrypted, err
 }
 func pkcs5Padding(ciphertext []byte, blockSize int) []byte {
 	padding := blockSize - len(ciphertext)%blockSize
@@ -37,6 +39,30 @@ func pkcs5UnPadding(origData []byte) []byte {
 	length := len(origData)
 	unpadding := int(origData[length-1])
 	return origData[:(length - unpadding)]
+}
+
+//PKCS7 填充模式
+func PKCS7Padding(ciphertext []byte, blockSize int) []byte {
+	padding := blockSize - len(ciphertext)%blockSize // 需要填充的数目
+	// 只要少于256就能放到一个byte中，默认的blockSize=16(即采用16*8=128, AES-128长的密钥)
+	// 最少填充1个byte，如果原文刚好是blocksize的整数倍，则再填充一个blocksize
+	padtext := bytes.Repeat([]byte{byte(padding)}, padding) // 生成填充的文本
+	return append(ciphertext, padtext...)
+
+}
+
+//填充的反向操作，删除填充字符串
+func PKCS7UnPadding(origData []byte) ([]byte, error) {
+	//获取数据长度
+	length := len(origData)
+	if length == 0 {
+		return nil, errors.New("加密字符串错误！")
+	} else {
+		//获取填充字符串长度
+		unpadding := int(origData[length-1])
+		//截取切片，删除填充字节，并且返回明文
+		return origData[:(length - unpadding)], nil
+	}
 }
 
 // =================== ECB ======================
@@ -54,7 +80,7 @@ func AesEncryptECB(origData []byte, key []byte) (encrypted []byte) {
 	for bs, be := 0, cipher.BlockSize(); bs <= len(origData); bs, be = bs+cipher.BlockSize(), be+cipher.BlockSize() {
 		cipher.Encrypt(encrypted[bs:be], plain[bs:be])
 	}
- 
+
 	return encrypted
 }
 func AesDecryptECB(encrypted []byte, key []byte) (decrypted []byte) {
@@ -64,9 +90,9 @@ func AesDecryptECB(encrypted []byte, key []byte) (decrypted []byte) {
 	for bs, be := 0, cipher.BlockSize(); bs < len(encrypted); bs, be = bs+cipher.BlockSize(), be+cipher.BlockSize() {
 		cipher.Decrypt(decrypted[bs:be], encrypted[bs:be])
 	}
- 
+
 	bEnd := SearchByteSliceIndex(decrypted, 0)
- 
+
 	return decrypted[:bEnd]
 }
 func generateKey(key []byte) (genKey []byte) {
@@ -79,7 +105,7 @@ func generateKey(key []byte) (genKey []byte) {
 	}
 	return genKey
 }
- 
+
 // []byte 字节切片 循环查找
 func SearchByteSliceIndex(bSrc []byte, b byte) int {
 	for i := 0; i < len(bSrc); i++ {
@@ -87,10 +113,10 @@ func SearchByteSliceIndex(bSrc []byte, b byte) int {
 			return i
 		}
 	}
- 
+
 	return -1
 }
- 
+
 // =================== CFB ======================
 func AesEncryptCFB(origData []byte, key []byte) (encrypted []byte) {
 	block, err := aes.NewCipher(key)
@@ -113,7 +139,7 @@ func AesDecryptCFB(encrypted []byte, key []byte) (decrypted []byte) {
 	}
 	iv := encrypted[:aes.BlockSize]
 	encrypted = encrypted[aes.BlockSize:]
- 
+
 	stream := cipher.NewCFBDecrypter(block, iv)
 	stream.XORKeyStream(encrypted, encrypted)
 	return encrypted
