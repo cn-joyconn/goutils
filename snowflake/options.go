@@ -6,7 +6,7 @@ package snowflake
 // 时间戳存储范围2^(64-(WorkerIdBitLength+SeqBitLength))-1, 例(64-(WorkerIdBitLength+SeqBitLength))=31时,大约68年就会用完
 // 这个一旦定义且开始生成id后千万不要改了 不然可能会生成相同的id
 type SnowOptions struct {
-	BaseTime          int64  // 基础时间（ms单位），不能超过当前系统时间(默认2021-1-1)
+	BaseTime          uint64  // 基础时间（ms单位），不能超过当前系统时间(默认2021-1-1)
 	WorkerId          uint16 // 机器码，必须由外部设定，最大值 2^WorkerIdBitLength-1
 	WorkerIdBitLength byte   // 机器码位长，默认值6，取值范围 [1, 20]（要求：序列数位长+机器码位长不超过23）
 	SeqBitLength      byte   // 序列数位长，默认值6，取值范围 [3, 22]（要求：序列数位长+机器码位长不超过23）

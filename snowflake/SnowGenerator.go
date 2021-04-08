@@ -19,8 +19,8 @@ func NewIdGenerator(options *SnowOptions) *SnowGenerator {
 	}
 
 	// 1.BaseTime
-	minTime := int64(631123200000) // time.Now().AddDate(-30, 0, 0).UnixNano() / 1e6
-	if options.BaseTime < minTime || options.BaseTime > time.Now().UnixNano()/1e6 {
+	minTime := uint64(631123200000) // time.Now().AddDate(-30, 0, 0).UnixNano() / 1e6
+	if options.BaseTime < minTime || options.BaseTime > uint64(time.Now().UnixNano()/1e6) {
 		panic("BaseTime error.")
 	}
 
@@ -69,7 +69,7 @@ func NewIdGenerator(options *SnowOptions) *SnowGenerator {
 	}
 }
 // NextId 生成一个新的ID
-func (sg *SnowGenerator)NextId()int64{
+func (sg *SnowGenerator)NextId()uint64{
 	return sg.SnowWorker.NextId()
 }
 
@@ -85,7 +85,7 @@ func InitGenerator(options *SnowOptions) {
 }
 
 // NextId 利用全局生成器生成一个新的ID
-func NextId() int64 {
+func NextId() uint64 {
 	if singletonGenerator == nil {
 		singletonMutex.Lock()
 		defer singletonMutex.Unlock()
