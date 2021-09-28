@@ -1,7 +1,10 @@
 package filetool
 
 import (
+	"bufio"
+	"io"
 	"io/ioutil"
+	"os"
 	"strings"
 )
 
@@ -14,7 +17,25 @@ func ReadFileToBytes(filePath string) ([]byte, error) {
 	}
 	return b, nil
 }
-
+func ReadFileToLineBytes(filePath string) ([][]byte, error) {
+	result := make([][]byte, 0)
+	if IsExist(filePath) && IsFile(filePath) {
+		fi, err := os.Open(filePath)
+		if err == nil {
+			defer fi.Close()
+			br := bufio.NewReader(fi)
+			for {
+				a, _, c := br.ReadLine()
+				if c == io.EOF {
+					break
+				}
+				result = append(result, a)
+			}
+		}
+	}
+	
+	return result, nil
+}
 // ReadFileToString reads data type 'string' from file by given path.
 // It returns error when fail to finish operation.
 func ReadFileToString(filePath string) (string, error) {

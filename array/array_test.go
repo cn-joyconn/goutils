@@ -24,3 +24,19 @@ func TestInArray(t *testing.T) {
 	bool := InStrArray("1", []string{"0", "1", "12"})
 	fmt.Println(bool)
 }
+
+type TestSt struct{
+	Name string
+	ID int
+}
+func TestArrContain(t *testing.T) {
+	
+
+	aaas := make([]TestSt, 0)
+	aaas  = append(aaas, TestSt{Name:"aa",ID:1})
+	aaas  = append(aaas, TestSt{Name:"bb",ID:1})
+	aaas  = append(aaas, TestSt{Name:"cc",ID:1})
+	aa:=aaas[1]
+
+	Contain(aa,aaas)
+}
