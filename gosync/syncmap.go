@@ -2,12 +2,12 @@ package gosync
 
 import "sync"
 
-type SyncMap[K comparable, V comparable] struct {
+type SyncMap[K comparable, V any] struct {
 	mu     sync.RWMutex
 	source map[K]V
 }
 
-func NewSyncMap[K comparable, V comparable]() *SyncMap[K, V] {
+func NewSyncMap[K comparable, V any]() *SyncMap[K, V] {
 	result := &SyncMap[K, V]{
 		source: make(map[K]V),
 	}
