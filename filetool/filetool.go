@@ -10,6 +10,8 @@ import (
 
 // SelfPath gets compiled executable file absolute path
 func SelfPath() string {
+
+	// fmt.Println(filepath.Abs(""))
 	path, _ := filepath.Abs(os.Args[0])
 	return path
 }
