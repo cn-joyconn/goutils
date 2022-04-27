@@ -1,4 +1,4 @@
-package goutils
+package test
 
 import (
 	"fmt"
