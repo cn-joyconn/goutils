@@ -25,6 +25,9 @@ func (counter *SyncCounter) Reduce() {
 	counter.mutex.Lock()
 	defer counter.mutex.Unlock()
 	counter.couter--
+	if counter.couter < 0 {
+		counter.couter = 0
+	}
 }
 func (counter *SyncCounter) Get() int64 {
 	return counter.couter
