@@ -12,19 +12,19 @@ import (
 func SelfPath() string {
 
 	// fmt.Println(filepath.Abs(""))
-	// path, _ := filepath.Abs(os.Args[0])
+	path, _ := filepath.Abs(os.Args[0])
+	return path
+}
 
+// SelfDir gets compiled executable file directory
+func SelfDir() string {
+	// return filepath.Dir(SelfPath())
 	currentDir, err := os.Getwd()
 	if err == nil {
 		return currentDir
 	} else {
 		return ""
 	}
-}
-
-// SelfDir gets compiled executable file directory
-func SelfDir() string {
-	return filepath.Dir(SelfPath())
 }
 
 // get filepath base name
