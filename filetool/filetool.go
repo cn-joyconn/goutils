@@ -12,8 +12,14 @@ import (
 func SelfPath() string {
 
 	// fmt.Println(filepath.Abs(""))
-	path, _ := filepath.Abs(os.Args[0])
-	return path
+	// path, _ := filepath.Abs(os.Args[0])
+
+	currentDir, err := os.Getwd()
+	if err == nil {
+		return currentDir
+	} else {
+		return ""
+	}
 }
 
 // SelfDir gets compiled executable file directory
