@@ -11,11 +11,25 @@ import (
 // ReadFileToBytes reads data type '[]byte' from file by given path.
 // It returns error when fail to finish operation.
 func ReadFileToBytes(filePath string) ([]byte, error) {
-	b, err := ioutil.ReadFile(filePath)
-	if err != nil {
-		return []byte(""), err
-	}
-	return b, nil
+	// b, err := ioutil.ReadFile(filePath)
+	// if err != nil {
+	// 	return []byte(""), err
+	// }
+	// return b, nil
+
+	file, err := os.Open(filePath)
+    if err != nil {
+        return  []byte(""), err
+    }
+    defer file.Close() // 确保文件在函数结束时关闭
+ 
+    reader := bufio.NewReader(file)
+    content, err := io.ReadAll(reader)
+    if err != nil {
+        fmt.Println("Error reading file:", err)
+        return  []byte(""), err
+    }
+	return content,err
 }
 func ReadFileToLineBytes(filePath string) ([][]byte, error) {
 	result := make([][]byte, 0)
