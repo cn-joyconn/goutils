@@ -3,7 +3,6 @@ package filetool
 import (
 	"bufio"
 	"io"
-	"io/ioutil"
 	"os"
 	"strings"
 )
@@ -18,17 +17,17 @@ func ReadFileToBytes(filePath string) ([]byte, error) {
 	// return b, nil
 
 	file, err := os.Open(filePath)
-    if err != nil {
-        return  []byte(""), err
-    }
-    defer file.Close() // 确保文件在函数结束时关闭
- 
-    reader := bufio.NewReader(file)
-    content, err := io.ReadAll(reader)
-    if err != nil {
-        return  []byte(""), err
-    }
-	return content,err
+	if err != nil {
+		return []byte(""), err
+	}
+	defer file.Close() // 确保文件在函数结束时关闭
+
+	reader := bufio.NewReader(file)
+	content, err := io.ReadAll(reader)
+	if err != nil {
+		return []byte(""), err
+	}
+	return content, err
 }
 func ReadFileToLineBytes(filePath string) ([][]byte, error) {
 	result := make([][]byte, 0)
@@ -46,9 +45,10 @@ func ReadFileToLineBytes(filePath string) ([][]byte, error) {
 			}
 		}
 	}
-	
+
 	return result, nil
 }
+
 // ReadFileToString reads data type 'string' from file by given path.
 // It returns error when fail to finish operation.
 func ReadFileToString(filePath string) (string, error) {
@@ -59,7 +59,7 @@ func ReadFileToString(filePath string) (string, error) {
 	return string(b), nil
 }
 
-//读取文件里的数据,去掉空格,换行,制表符,回车
+// 读取文件里的数据,去掉空格,换行,制表符,回车
 func ReadFileToStringNoLn(filePath string) (string, error) {
 	str, err := ReadFileToString(filePath)
 	if err != nil {
