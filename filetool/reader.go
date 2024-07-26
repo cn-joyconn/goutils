@@ -26,7 +26,6 @@ func ReadFileToBytes(filePath string) ([]byte, error) {
     reader := bufio.NewReader(file)
     content, err := io.ReadAll(reader)
     if err != nil {
-        fmt.Println("Error reading file:", err)
         return  []byte(""), err
     }
 	return content,err
