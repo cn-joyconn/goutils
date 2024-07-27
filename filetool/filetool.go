@@ -2,7 +2,6 @@ package filetool
 
 import (
 	"errors"
-	"io/ioutil"
 	"os"
 	"path"
 	"path/filepath"
@@ -120,7 +119,7 @@ func DirsUnder(dirPath string) ([]string, error) {
 		return []string{}, nil
 	}
 
-	fs, err := ioutil.ReadDir(dirPath)
+	fs, err := os.ReadDir(dirPath)
 	if err != nil {
 		return []string{}, err
 	}
@@ -150,7 +149,7 @@ func FilesUnder(dirPath string) ([]string, error) {
 		return []string{}, nil
 	}
 
-	fs, err := ioutil.ReadDir(dirPath)
+	fs, err := os.ReadDir(dirPath)
 	if err != nil {
 		return []string{}, err
 	}
