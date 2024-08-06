@@ -7,7 +7,13 @@ import (
 	"strings"
 )
 
-//int 转 string
+type chantype interface {
+	int | int8 | int16 | int32 | int64 |
+		uint | uint8 | uint16 | uint32 | uint64 |
+		uintptr | float32 | float64 | string
+}
+
+// int 转 string
 func IntArrToInString(i []int) string {
 	s := make([]string, 0, len(i))
 	for _, o := range i {
@@ -16,7 +22,7 @@ func IntArrToInString(i []int) string {
 	return strings.Join(s, ",")
 }
 
-//int64 change string
+// int64 change string
 func Int64ArrToInString(i64 []int64) string {
 	s := make([]string, 0, len(i64))
 	for _, o := range i64 {
@@ -25,13 +31,12 @@ func Int64ArrToInString(i64 []int64) string {
 	return strings.Join(s, ",")
 }
 
-//string arr change int
+// string arr change int
 func StringArrToInString(s []string) string {
 	return `"` + strings.Join(s, `","`) + `"`
 }
 
-//InStrArray 判断元素是否包含
-func InStrArray(s string, arr []string) bool {
+func InArr[T chantype](s T, arr []T) bool {
 	for _, val := range arr {
 		if s == val {
 			return true
@@ -40,14 +45,20 @@ func InStrArray(s string, arr []string) bool {
 	return false
 }
 
+// InStrArray 判断元素是否包含
+func InStrArray(s string, arr []string) bool {
+	// for _, val := range arr {
+	// 	if s == val {
+	// 		return true
+	// 	}
+	// }
+	return InArr(s, arr)
+}
+
 // InIntArray 判断元素是否包含
 func InIntArray(s int, arr []int) bool {
-	for _, val := range arr {
-		if s == val {
-			return true
-		}
-	}
-	return false
+
+	return InArr(s, arr)
 }
 
 func RemoveDuplicateStr(arr []string) (newArr []string) {
@@ -99,25 +110,24 @@ func RemoveDuplicateInt64(arr []int64) (newArr []int64) {
 	return
 }
 
-func ReverseStr(l []string)  {
-    for i:=0; i < int(len(l)/2) ;i++{
-        li := len(l) - i -1
-        l[i],l[li] = l[li],l[i]
-    }
+func ReverseStr(l []string) {
+	for i := 0; i < int(len(l)/2); i++ {
+		li := len(l) - i - 1
+		l[i], l[li] = l[li], l[i]
+	}
 }
-func ReverseInt(l []int)  {
-    for i:=0; i < int(len(l)/2) ;i++{
-        li := len(l) - i -1
-        l[i],l[li] = l[li],l[i]
-    }
+func ReverseInt(l []int) {
+	for i := 0; i < int(len(l)/2); i++ {
+		li := len(l) - i - 1
+		l[i], l[li] = l[li], l[i]
+	}
 }
-func ReverseInt64(l []int64)  {
-    for i:=0; i < int(len(l)/2) ;i++{
-        li := len(l) - i -1
-        l[i],l[li] = l[li],l[i]
-    }
+func ReverseInt64(l []int64) {
+	for i := 0; i < int(len(l)/2); i++ {
+		li := len(l) - i - 1
+		l[i], l[li] = l[li], l[i]
+	}
 }
-
 
 func Contain(obj interface{}, target interface{}) (bool, error) {
 	targetValue := reflect.ValueOf(target)
@@ -133,6 +143,6 @@ func Contain(obj interface{}, target interface{}) (bool, error) {
 			return true, nil
 		}
 	}
- 
+
 	return false, errors.New("not in array")
 }
