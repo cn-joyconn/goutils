@@ -17,13 +17,13 @@ func SelfPath() string {
 
 // SelfDir gets compiled executable file directory
 func SelfDir() string {
+	return filepath.Dir(SelfPath())
+	// currentDir, err := os.Getwd()
+	// if err == nil {
+	// 	return currentDir
+	// } else {
 
-	currentDir, err := os.Getwd()
-	if err == nil {
-		return currentDir
-	} else {
-		return filepath.Dir(SelfPath())
-	}
+	// }
 }
 
 // get filepath base name
