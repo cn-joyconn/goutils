@@ -40,7 +40,7 @@ func (sm *SyncMap[K, V]) Remove(k K) {
 	defer sm.mu.Unlock()
 	delete(sm.source, k)
 }
-func (sm *SyncMap[K, V]) Clear(k K) {
+func (sm *SyncMap[K, V]) Clear() {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 	sm.source = make(map[K]V)
