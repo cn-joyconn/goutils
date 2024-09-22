@@ -60,9 +60,8 @@ func InIntArray(s int, arr []int) bool {
 
 	return InArr(s, arr)
 }
-
-func RemoveDuplicateStr(arr []string) (newArr []string) {
-	newArr = make([]string, 0)
+func RemoveDuplicate[T chantype](arr []T) (newArr []T) {
+	newArr = make([]T, 0)
 	for i := 0; i < len(arr); i++ {
 		repeat := false
 		for j := i + 1; j < len(arr); j++ {
@@ -76,57 +75,31 @@ func RemoveDuplicateStr(arr []string) (newArr []string) {
 		}
 	}
 	return
+}
+func RemoveDuplicateStr(arr []string) (newArr []string) {
+	return RemoveDuplicate(arr)
 }
 func RemoveDuplicateInt(arr []int) (newArr []int) {
-	newArr = make([]int, 0)
-	for i := 0; i < len(arr); i++ {
-		repeat := false
-		for j := i + 1; j < len(arr); j++ {
-			if arr[i] == arr[j] {
-				repeat = true
-				break
-			}
-		}
-		if !repeat {
-			newArr = append(newArr, arr[i])
-		}
-	}
-	return
+	return RemoveDuplicate(arr)
 }
 func RemoveDuplicateInt64(arr []int64) (newArr []int64) {
-	newArr = make([]int64, 0)
-	for i := 0; i < len(arr); i++ {
-		repeat := false
-		for j := i + 1; j < len(arr); j++ {
-			if arr[i] == arr[j] {
-				repeat = true
-				break
-			}
-		}
-		if !repeat {
-			newArr = append(newArr, arr[i])
-		}
-	}
-	return
+	return RemoveDuplicate(arr)
 }
-
-func ReverseStr(l []string) {
+func Reverse[T chantype](l []T) (newArr []T) {
 	for i := 0; i < int(len(l)/2); i++ {
 		li := len(l) - i - 1
 		l[i], l[li] = l[li], l[i]
 	}
+	return l
 }
-func ReverseInt(l []int) {
-	for i := 0; i < int(len(l)/2); i++ {
-		li := len(l) - i - 1
-		l[i], l[li] = l[li], l[i]
-	}
+func ReverseStr(l []string) (newArr []string) {
+	return Reverse(l)
 }
-func ReverseInt64(l []int64) {
-	for i := 0; i < int(len(l)/2); i++ {
-		li := len(l) - i - 1
-		l[i], l[li] = l[li], l[i]
-	}
+func ReverseInt(l []int) (newArr []int) {
+	return Reverse(l)
+}
+func ReverseInt64(l []int64) (newArr []int64) {
+	return Reverse(l)
 }
 
 func Contain(obj interface{}, target interface{}) (bool, error) {
