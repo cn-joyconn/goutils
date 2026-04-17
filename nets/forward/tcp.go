@@ -4,31 +4,48 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
-// TCPProxy TCP转发代理
+// TCPProxy TCP代理,支持连接池、健康检查、速率限制和监控
 type TCPProxy struct {
-	port         string
-	targetIP     string
-	targetPort   int
-	dialTimeout  time.Duration // 连接目标服务器超时
-	idleTimeout  time.Duration // 连接空闲超时
-	readTimeout  time.Duration // 读取超时
-	writeTimeout time.Duration // 写入超时
-	maxConn      int           // 最大连接数
-	activeConn   sync.Map      // 活动连接
-	connCount    int32         // 当前连接数
-	mu           sync.Mutex
-	ctx          context.Context
-	cancel       context.CancelFunc
+	config        Config                 // 配置信息
+	port          string                 // 监听端口
+	targetIP      string                 // 目标服务器IP
+	targetPort    int                    // 目标服务器端口
+	dialTimeout   time.Duration          // 连接超时
+	idleTimeout   time.Duration          // 空闲超时
+	readTimeout   time.Duration          // 读取超时
+	writeTimeout  time.Duration          // 写入超时
+	maxConn       int                    // 最大连接数
+	bufferSize    int                    // 缓冲区大小
+	activeConns   map[string]*connection // 当前活跃连接集合
+	connMu        sync.Mutex             // 保护activeConns的互斥锁
+	rateLimiter   *RateLimiter           // 速率限制器
+	pool          *ConnPool              // 连接池
+	healthChecker *HealthChecker         // 健康检查器
+	logger        Logger                 // 日志记录器
+	metrics       *Metrics               // 监控指标收集器
+	ctx           context.Context        // 上下文,用于优雅关闭
+	cancel        context.CancelFunc     // 取消函数
+	healthy       atomic.Bool            // 整体健康状态
 }
 
-// NewTCPProxy 创建TCP代理
+// NewTCPProxy 创建TCP代理实例
+// config 代理配置,包含监听端口、目标地址、超时设置等参数
 func NewTCPProxy(config Config) *TCPProxy {
+	// 验证配置
+	if err := config.Validate(); err != nil {
+		panic(err)
+	}
+
+	// 设置默认值
+	if config.BufferSize <= 0 {
+		config.BufferSize = 32 * 1024
+	}
 	if config.DialTimeout <= 0 {
 		config.DialTimeout = 5 * time.Second
 	}
@@ -44,9 +61,27 @@ func NewTCPProxy(config Config) *TCPProxy {
 	if config.MaxConn <= 0 {
 		config.MaxConn = 1000
 	}
+	if config.MaxRetries <= 0 {
+		config.MaxRetries = 3
+	}
+	if config.RetryInterval <= 0 {
+		config.RetryInterval = 500 * time.Millisecond
+	}
 
+	// 创建日志记录器
+	var logger Logger
+	if config.Logger != nil {
+		logger = config.Logger
+	} else {
+		logger = NewLogger(config.LogLevel)
+	}
+
+	// 创建可取消的上下文
 	ctx, cancel := context.WithCancel(context.Background())
-	return &TCPProxy{
+
+	// 初始化代理结构体
+	proxy := &TCPProxy{
+		config:       config,
 		port:         config.Port,
 		targetIP:     config.TargetIP,
 		targetPort:   config.TargetPort,
@@ -55,26 +90,104 @@ func NewTCPProxy(config Config) *TCPProxy {
 		readTimeout:  config.ReadTimeout,
 		writeTimeout: config.WriteTimeout,
 		maxConn:      config.MaxConn,
+		bufferSize:   config.BufferSize,
+		activeConns:  make(map[string]*connection),
+		logger:       logger,
 		ctx:          ctx,
 		cancel:       cancel,
 	}
+
+	// 初始化速率限制器
+	if config.RateLimit > 0 {
+		if config.RateLimitBurst <= 0 {
+			config.RateLimitBurst = 100
+		}
+		proxy.rateLimiter = NewRateLimiter(config.RateLimit, config.RateLimitBurst)
+	}
+
+	// 初始化监控指标
+	if config.MetricsEnabled {
+		proxy.metrics = NewMetrics("tcpproxy")
+	}
+
+	// 初始化连接池
+	if config.UsePool {
+		proxy.pool = NewConnPool(PoolConfig{
+			TargetIP:    config.TargetIP,
+			TargetPort:  config.TargetPort,
+			DialTimeout: config.DialTimeout,
+			MaxIdle:     config.PoolMaxIdle,
+			MaxActive:   config.PoolMaxActive,
+			IdleTimeout: config.PoolIdleTimeout,
+			Logger:      logger,
+		})
+	}
+
+	// 初始化健康检查器
+	if config.HealthCheck {
+		if config.HealthInterval <= 0 {
+			config.HealthInterval = 10 * time.Second
+		}
+		if config.HealthTimeout <= 0 {
+			config.HealthTimeout = 3 * time.Second
+		}
+		proxy.healthChecker = NewHealthChecker(HealthConfig{
+			TargetIP:   config.TargetIP,
+			TargetPort: config.TargetPort,
+			Interval:   config.HealthInterval,
+			Timeout:    config.HealthTimeout,
+			Logger:     logger,
+		})
+		// 启动健康检查循环
+		healthCtx := make(chan struct{})
+		go proxy.healthChecker.Start(healthCtx)
+		// 代理停止时关闭健康检查
+		go func() {
+			<-ctx.Done()
+			close(healthCtx)
+		}()
+	}
+
+	proxy.healthy.Store(true)
+
+	return proxy
 }
 
-// Start 启动代理
+// Start 启动TCP代理服务,阻塞直到收到停止信号
 func (p *TCPProxy) Start() error {
-	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", p.port))
+	addr := fmt.Sprintf(":%s", p.port)
+	if p.port == "" {
+		addr = ":8080"
+	}
+
+	// 创建TCP监听器
+	listener, err := net.Listen("tcp", addr)
 	if err != nil {
-		return fmt.Errorf("监听失败: %w", err)
+		return fmt.Errorf("failed to listen: %w", err)
 	}
 	defer listener.Close()
 
-	log.Printf("TCP代理启动，监听地址: :%d，目标地址: %s:%d", p.port, p.targetIP, p.targetPort)
-	log.Printf("超时配置: 连接=%v, 空闲=%v, 读取=%v, 写入=%v",
-		p.dialTimeout, p.idleTimeout, p.readTimeout, p.writeTimeout)
+	// 输出启动信息
+	p.logger.Info("TCPProxy started, listening on %s, forwarding to %s:%d",
+		addr, p.targetIP, p.targetPort)
+	p.logger.Info("Config: dial=%v, idle=%v, read=%v, write=%v, maxConn=%d, buffer=%d",
+		p.dialTimeout, p.idleTimeout, p.readTimeout, p.writeTimeout, p.maxConn, p.bufferSize)
 
-	// 启动连接清理器
+	// 输出速率限制配置
+	if p.rateLimiter != nil {
+		p.logger.Info("Rate limiting enabled: %d req/s, burst=%d",
+			p.config.RateLimit, p.config.RateLimitBurst)
+	}
+	// 输出连接池配置
+	if p.pool != nil {
+		p.logger.Info("Connection pool enabled: maxIdle=%d, maxActive=%d",
+			p.config.PoolMaxIdle, p.config.PoolMaxActive)
+	}
+
+	// 启动空闲连接清理器
 	go p.connectionCleaner()
 
+	// 接受连接主循环
 	for {
 		select {
 		case <-p.ctx.Done():
@@ -82,119 +195,196 @@ func (p *TCPProxy) Start() error {
 		default:
 		}
 
-		conn, err := listener.Accept()
+		// 接受客户端连接
+		clientConn, err := listener.Accept()
 		if err != nil {
-			log.Printf("接受连接失败: %v", err)
+			p.logger.Error("Accept error: %v", err)
 			continue
 		}
 
-		// 检查连接数限制
-		if p.getConnectionCount() >= p.maxConn {
-			log.Printf("连接数超过限制: %d/%d", p.getConnectionCount(), p.maxConn)
-			conn.Close()
+		// 速率限制检查
+		if p.rateLimiter != nil && !p.rateLimiter.Allow() {
+			if p.metrics != nil {
+				p.metrics.IncRateLimitRejects()
+			}
+			p.logger.Warn("Connection rejected due to rate limiting: %s", clientConn.RemoteAddr())
+			clientConn.Close()
 			continue
 		}
 
-		p.incrementConnectionCount()
-		p.activeConn.Store(conn.RemoteAddr().String(), time.Now())
+		// 检查最大连接数限制
+		p.connMu.Lock()
+		connCount := len(p.activeConns)
+		p.connMu.Unlock()
 
-		log.Printf("新连接来自: %s (活动连接: %d)",
-			conn.RemoteAddr().String(), p.getConnectionCount())
+		if connCount >= p.maxConn {
+			p.logger.Warn("Connection rejected: maxConn reached (%d/%d)", connCount, p.maxConn)
+			clientConn.Close()
+			continue
+		}
 
-		go p.handleConnection(conn)
+		// 健康检查
+		if p.healthChecker != nil && !p.healthChecker.IsHealthy() {
+			p.logger.Warn("Connection rejected: target unhealthy")
+			clientConn.Close()
+			continue
+		}
+
+		// 处理连接
+		go p.handleConnection(clientConn)
 	}
 }
 
-// handleConnection 处理单个连接
+// handleConnection 处理单个客户端连接
+// 创建到目标服务器的连接并双向转发数据
 func (p *TCPProxy) handleConnection(clientConn net.Conn) {
-	defer func() {
-		clientConn.Close()
-		p.activeConn.Delete(clientConn.RemoteAddr().String())
-		p.decrementConnectionCount()
+	startTime := time.Now()
+	addr := clientConn.RemoteAddr().String()
 
-		log.Printf("连接关闭: %s (剩余连接: %d)",
-			clientConn.RemoteAddr().String(), p.getConnectionCount())
+	// 更新监控指标
+	if p.metrics != nil {
+		p.metrics.IncConnections()
+		defer func() {
+			p.metrics.DecConnections()
+			p.metrics.RecordConnectionDuration(time.Since(startTime).Seconds())
+		}()
+	}
+
+	// 创建代理连接对象
+	conn := &connection{
+		id:         addr,
+		clientConn: clientConn,
+		createdAt:  startTime,
+		lastActive: startTime,
+	}
+
+	// 注册到活跃连接集合
+	p.connMu.Lock()
+	p.activeConns[addr] = conn
+	p.connMu.Unlock()
+
+	// 连接关闭时清理
+	defer func() {
+		p.connMu.Lock()
+		delete(p.activeConns, addr)
+		p.connMu.Unlock()
+
+		duration := time.Since(startTime)
+		conn.Close()
+		p.logger.Info("Connection closed: %s (duration: %v, remaining: %d)",
+			addr, duration, len(p.activeConns))
 	}()
 
-	// 连接目标服务器（带超时）
-	ctx, cancel := context.WithTimeout(context.Background(), p.dialTimeout)
-	defer cancel()
-
+	// 建立到目标服务器的连接
 	var targetConn net.Conn
 	var err error
 
-	// 异步连接目标服务器
-	connCh := make(chan net.Conn, 1)
-	errCh := make(chan error, 1)
-
-	go func() {
-		conn, err := net.Dial("tcp", fmt.Sprintf("%s:%d", p.targetIP, p.targetPort))
-		if err != nil {
-			errCh <- err
-			return
-		}
-		connCh <- conn
-	}()
-
-	select {
-	case <-ctx.Done():
-		log.Printf("连接目标服务器超时: %v", ctx.Err())
-		return
-	case err = <-errCh:
-		log.Printf("连接目标服务器失败: %v", err)
-		return
-	case targetConn = <-connCh:
-		// 连接成功
+	if p.pool != nil {
+		// 使用连接池获取连接
+		targetConn, err = p.getConnWithRetry()
+		conn.poolRef = p.pool
+	} else {
+		// 直接拨号
+		targetConn, err = p.dialWithRetry()
 	}
-	defer targetConn.Close()
 
-	log.Printf("连接建立: %s -> %s",
-		clientConn.RemoteAddr(), targetConn.RemoteAddr())
+	if err != nil {
+		p.logger.Error("Failed to connect to target: %v", err)
+		if p.metrics != nil {
+			p.metrics.RecordError("dial")
+		}
+		return
+	}
 
-	// 设置连接超时
+	conn.targetConn = targetConn
+
+	// 记录拨号耗时
+	if p.metrics != nil {
+		p.metrics.RecordDial(time.Since(startTime).Seconds())
+	}
+
+	p.logger.Info("Connection established: %s -> %s", addr, targetConn.RemoteAddr())
+
+	// 设置空闲超时
 	deadline := time.Now().Add(p.idleTimeout)
 	clientConn.SetDeadline(deadline)
 	targetConn.SetDeadline(deadline)
 
-	// 记录最后一次活动时间
-	lastActivity := time.Now()
-	p.activeConn.Store(clientConn.RemoteAddr().String(), lastActivity)
-
-	// 使用 WaitGroup 等待两个方向的转发完成
+	// 双向数据转发
 	var wg sync.WaitGroup
 	wg.Add(2)
 
-	// 通道用于控制优雅关闭
-	done := make(chan bool, 2)
+	done := make(chan struct{}, 2)
 
-	// 从客户端转发到目标服务器
+	// 客户端 -> 目标服务器
 	go func() {
 		defer wg.Done()
-		p.forwardData(clientConn, targetConn, "client->target", &lastActivity, done)
+		p.forwardData(clientConn, targetConn, "client->target", conn)
+		close(done)
 	}()
 
-	// 从目标服务器转发到客户端
+	// 目标服务器 -> 客户端
 	go func() {
 		defer wg.Done()
-		p.forwardData(targetConn, clientConn, "target->client", &lastActivity, done)
+		p.forwardData(targetConn, clientConn, "target->client", conn)
 	}()
 
-	// 等待转发完成
 	wg.Wait()
-	close(done)
 }
 
-// forwardData 转发数据
-func (p *TCPProxy) forwardData(src, dst net.Conn, direction string,
-	lastActivity *time.Time, done chan bool) {
+// dialWithRetry 拨号连接到目标服务器,失败时重试
+func (p *TCPProxy) dialWithRetry() (net.Conn, error) {
+	var lastErr error
+	addr := fmt.Sprintf("%s:%d", p.targetIP, p.targetPort)
+	dialer := &net.Dialer{Timeout: p.dialTimeout}
 
-	buffer := make([]byte, 32*1024) // 32KB 缓冲区
+	for i := 0; i < p.config.MaxRetries; i++ {
+		ctx, cancel := context.WithTimeout(context.Background(), p.dialTimeout)
+		conn, err := dialer.DialContext(ctx, "tcp", addr)
+		cancel()
+
+		if err == nil {
+			return conn, nil
+		}
+		lastErr = err
+
+		if i < p.config.MaxRetries-1 {
+			p.logger.Warn("Dial attempt %d failed: %v, retrying...", i+1, err)
+			time.Sleep(p.config.RetryInterval)
+		}
+	}
+
+	return nil, fmt.Errorf("dial failed after %d attempts: %w", p.config.MaxRetries, lastErr)
+}
+
+// getConnWithRetry 从连接池获取连接,失败时重试
+func (p *TCPProxy) getConnWithRetry() (*pooledConn, error) {
+	var lastErr error
+
+	for i := 0; i < p.config.MaxRetries; i++ {
+		conn, err := p.pool.Get()
+		if err == nil {
+			return conn, nil
+		}
+		lastErr = err
+
+		if i < p.config.MaxRetries-1 {
+			p.logger.Warn("Pool get attempt %d failed: %v, retrying...", i+1, err)
+			time.Sleep(p.config.RetryInterval)
+		}
+	}
+
+	return nil, fmt.Errorf("pool get failed after %d attempts: %w", p.config.MaxRetries, lastErr)
+}
+
+// forwardData 单向数据转发
+// src 数据源, dst 数据目的地, direction 方向标识
+func (p *TCPProxy) forwardData(src, dst net.Conn, direction string, conn *connection) {
+	buffer := make([]byte, p.bufferSize)
 
 	for {
 		select {
 		case <-p.ctx.Done():
-			return
-		case <-done:
 			return
 		default:
 		}
@@ -204,44 +394,50 @@ func (p *TCPProxy) forwardData(src, dst net.Conn, direction string,
 			src.SetReadDeadline(time.Now().Add(p.readTimeout))
 		}
 
-		// 读取数据
+		// 从源读取数据
 		n, err := src.Read(buffer)
 		if err != nil {
 			if err != io.EOF && !isTimeoutError(err) {
-				log.Printf("%s 读取失败: %v", direction, err)
+				p.logger.Debug("%s read error: %v", direction, err)
+				if p.metrics != nil {
+					p.metrics.RecordError("read")
+				}
 			}
 			return
 		}
 
 		if n == 0 {
-			// 对端关闭连接
 			return
 		}
 
-		// 更新活动时间
-		*lastActivity = time.Now()
-		p.activeConn.Store(src.RemoteAddr().String(), *lastActivity)
+		// 更新连接活跃时间
+		conn.updateActivity()
 
 		// 设置写入超时
 		if p.writeTimeout > 0 {
 			dst.SetWriteDeadline(time.Now().Add(p.writeTimeout))
 		}
 
-		// 写入数据
-		_, err = dst.Write(buffer[:n])
+		// 写入目标
+		written, err := dst.Write(buffer[:n])
 		if err != nil {
 			if !isTimeoutError(err) {
-				log.Printf("%s 写入失败: %v", direction, err)
+				p.logger.Debug("%s write error: %v", direction, err)
+				if p.metrics != nil {
+					p.metrics.RecordError("write")
+				}
 			}
 			return
 		}
 
-		// 记录日志（生产环境可以注释掉）
-		log.Printf("%s 转发 %d 字节", direction, n)
+		// 记录传输字节数
+		if p.metrics != nil {
+			p.metrics.RecordBytes(direction, int64(written))
+		}
 	}
 }
 
-// connectionCleaner 定期清理空闲连接
+// connectionCleaner 空闲连接清理循环,定期检测并关闭空闲连接
 func (p *TCPProxy) connectionCleaner() {
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
@@ -252,99 +448,73 @@ func (p *TCPProxy) connectionCleaner() {
 			return
 		case <-ticker.C:
 			p.cleanIdleConnections()
-		}
-	}
-}
-
-// cleanIdleConnections 清理空闲连接
-func (p *TCPProxy) cleanIdleConnections() {
-	now := time.Now()
-	var idleConns []string
-
-	// 找出空闲连接
-	p.activeConn.Range(func(key, value interface{}) bool {
-		if lastActivity, ok := value.(time.Time); ok {
-			if now.Sub(lastActivity) > p.idleTimeout {
-				addr := key.(string)
-				idleConns = append(idleConns, addr)
+			// 更新连接池统计
+			if p.pool != nil && p.metrics != nil {
+				p.metrics.UpdatePoolStats(p.pool.Stats())
 			}
 		}
-		return true
-	})
-
-	// 这里只是记录日志，实际连接在各自的 goroutine 中处理
-	if len(idleConns) > 0 {
-		log.Printf("检测到 %d 个空闲连接", len(idleConns))
-		// 在实际实现中，这里应该主动关闭这些连接
-		// 由于连接在各自的 goroutine 中管理，我们需要通过其他方式通知它们关闭
 	}
 }
 
-// Stop 停止代理
+// cleanIdleConnections 检测并关闭空闲连接
+func (p *TCPProxy) cleanIdleConnections() {
+	p.connMu.Lock()
+	defer p.connMu.Unlock()
+
+	now := time.Now()
+	var toClose []*connection
+
+	// 找出所有空闲连接
+	for _, conn := range p.activeConns {
+		if conn.isIdle(p.idleTimeout) {
+			toClose = append(toClose, conn)
+		}
+	}
+
+	// 关闭空闲连接
+	for _, conn := range toClose {
+		p.logger.Info("Closing idle connection: %s (idle for %v)",
+			conn.id, now.Sub(conn.lastActive))
+		conn.Close()
+		delete(p.activeConns, conn.id)
+	}
+}
+
+// Stop 停止代理服务,关闭所有连接
 func (p *TCPProxy) Stop() {
-	log.Println("正在停止代理...")
+	p.logger.Info("Stopping TCPProxy...")
 	p.cancel()
 
 	// 等待一段时间让连接优雅关闭
 	time.Sleep(2 * time.Second)
 
-	// 强制关闭所有活动连接
-	var wg sync.WaitGroup
-	p.activeConn.Range(func(key, value interface{}) bool {
-		wg.Add(1)
-		go func(addr string) {
-			defer wg.Done()
-			// 在实际实现中，这里应该关闭对应地址的连接
-			log.Printf("强制关闭连接: %s", addr)
-		}(key.(string))
-		return true
-	})
-	wg.Wait()
-
-	log.Println("代理已停止")
-}
-
-// 工具函数
-func (p *TCPProxy) getConnectionCount() int {
-	count := 0
-	p.activeConn.Range(func(_, _ interface{}) bool {
-		count++
-		return true
-	})
-	return count
-}
-
-func (p *TCPProxy) incrementConnectionCount() {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	p.connCount++
-}
-
-func (p *TCPProxy) decrementConnectionCount() {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	p.connCount--
-}
-
-// 连接监控
-func (p *TCPProxy) MonitorConnections() {
-	ticker := time.NewTicker(10 * time.Second)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-p.ctx.Done():
-			return
-		case <-ticker.C:
-			log.Printf("连接统计: 活动连接=%d", p.getConnectionCount())
-		}
+	// 强制关闭所有活跃连接
+	p.connMu.Lock()
+	for _, conn := range p.activeConns {
+		conn.Close()
 	}
+	p.activeConns = make(map[string]*connection)
+	p.connMu.Unlock()
+
+	// 关闭连接池
+	if p.pool != nil {
+		p.pool.Close()
+	}
+
+	p.logger.Info("TCPProxy stopped")
 }
 
-// isTimeoutError 判断是否为超时错误
-func isTimeoutError(err error) bool {
-	if netErr, ok := err.(net.Error); ok {
-		return netErr.Timeout()
+// GetActiveConnections 返回当前活跃连接数
+func (p *TCPProxy) GetActiveConnections() int {
+	p.connMu.Lock()
+	defer p.connMu.Unlock()
+	return len(p.activeConns)
+}
+
+// IsHealthy 返回代理健康状态
+func (p *TCPProxy) IsHealthy() bool {
+	if p.healthChecker != nil {
+		return p.healthChecker.IsHealthy()
 	}
-	return false
+	return p.healthy.Load()
 }
