@@ -314,19 +314,24 @@ func (p *TCPProxy) handleConnection(clientConn net.Conn) {
 	var wg sync.WaitGroup
 	wg.Add(2)
 
-	done := make(chan struct{}, 2)
+	stopChan := make(chan struct{})
 
 	// 客户端 -> 目标服务器
 	go func() {
 		defer wg.Done()
 		p.forwardData(clientConn, targetConn, "client->target", conn)
-		close(done)
+		close(stopChan)
 	}()
 
 	// 目标服务器 -> 客户端
 	go func() {
 		defer wg.Done()
 		p.forwardData(targetConn, clientConn, "target->client", conn)
+		select {
+		case <-stopChan:
+		default:
+			close(stopChan)
+		}
 	}()
 
 	wg.Wait()
@@ -379,6 +384,7 @@ func (p *TCPProxy) getConnWithRetry() (*pooledConn, error) {
 
 // forwardData 单向数据转发
 // src 数据源, dst 数据目的地, direction 方向标识
+// 返回时若检测到异常(非超时),会通知关闭连接
 func (p *TCPProxy) forwardData(src, dst net.Conn, direction string, conn *connection) {
 	buffer := make([]byte, p.bufferSize)
 
@@ -403,10 +409,14 @@ func (p *TCPProxy) forwardData(src, dst net.Conn, direction string, conn *connec
 					p.metrics.RecordError("read")
 				}
 			}
+			// 任何读取错误都关闭两个连接以快速终止
+			conn.Close()
 			return
 		}
 
 		if n == 0 {
+			// 读到0字节(正常EOF或空读),也关闭连接
+			conn.Close()
 			return
 		}
 
@@ -427,6 +437,8 @@ func (p *TCPProxy) forwardData(src, dst net.Conn, direction string, conn *connec
 					p.metrics.RecordError("write")
 				}
 			}
+			// 写入错误也关闭连接
+			conn.Close()
 			return
 		}
 

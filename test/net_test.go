@@ -68,7 +68,7 @@ func TestTcpForwardByMyLog(t *testing.T) {
 	config.TargetPort = TargetPort
 	config.MaxRetries = 3
 	config.HealthCheck = false
-	config.UsePool = false
+	config.UsePool = true
 	config.DialTimeout = 5 * time.Second
 	config.IdleTimeout = 120 * time.Second
 	config.ReadTimeout = 60 * time.Second
