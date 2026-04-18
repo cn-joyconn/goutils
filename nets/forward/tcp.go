@@ -13,7 +13,7 @@ import (
 // TCPProxy TCP代理,支持连接池、健康检查、速率限制和监控
 type TCPProxy struct {
 	config        Config                 // 配置信息
-	port          string                 // 监听端口
+	port          int                    // 监听端口
 	targetIP      string                 // 目标服务器IP
 	targetPort    int                    // 目标服务器端口
 	dialTimeout   time.Duration          // 连接超时
@@ -156,7 +156,7 @@ func NewTCPProxy(config Config) *TCPProxy {
 // Start 启动TCP代理服务,阻塞直到收到停止信号
 func (p *TCPProxy) Start() error {
 	addr := fmt.Sprintf(":%s", p.port)
-	if p.port == "" {
+	if p.port == 0 {
 		addr = ":8080"
 	}
 

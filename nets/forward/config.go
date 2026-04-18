@@ -6,7 +6,7 @@ import "time"
 type Config struct {
 	ID              string        `json:"id"`              // 配置ID标识
 	Protocol        string        `json:"protocol"`        // 协议类型: tcp、udp、tcp+udp
-	Port            string        `json:"port"`            // 监听端口
+	Port            int           `json:"port"`            // 监听端口
 	TargetIP        string        `json:"targetIP"`        // 目标服务器IP
 	TargetPort      int           `json:"targetPort"`      // 目标服务器端口
 	DialTimeout     time.Duration `json:"dialTimeout"`     // 连接目标服务器超时时间
@@ -60,8 +60,8 @@ func DefaultConfig() Config {
 
 // Validate 验证并填充配置默认值
 func (c *Config) Validate() error {
-	if c.Port == "" {
-		c.Port = "8080"
+	if c.Port == 0 {
+		c.Port = 8080
 	}
 	if c.TargetIP == "" {
 		c.TargetIP = "127.0.0.1"

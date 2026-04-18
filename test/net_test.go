@@ -10,7 +10,7 @@ import (
 )
 
 func TestTcpForward(t *testing.T) {
-	ListenAddr := "8080"
+	ListenAddr := 8080
 	TargetAddr := "127.0.0.1"
 	TargetPort := 60001
 
@@ -41,7 +41,7 @@ func TestTcpForward(t *testing.T) {
 
 func TestTcpForwardWithPool(t *testing.T) {
 	config := forward.DefaultConfig()
-	config.Port = "8081"
+	config.Port = 8081
 	config.TargetIP = "127.0.0.1"
 	config.TargetPort = 80
 	config.UsePool = true
@@ -58,7 +58,7 @@ func TestTcpForwardWithPool(t *testing.T) {
 }
 
 func TestTcpForwardByMyLog(t *testing.T) {
-	ListenAddr := "8080"
+	ListenAddr := 8080
 	TargetAddr := "127.0.0.1"
 	TargetPort := 60001
 
