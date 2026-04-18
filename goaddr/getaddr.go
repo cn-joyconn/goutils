@@ -21,7 +21,7 @@ type getaddr struct {
 	excludeList []string
 }
 
-//_type {false:内网地址 ,true:外网地址}
+// _type {false:内网地址 ,true:外网地址}
 func NewAddr(port int) *getaddr {
 	return &getaddr{
 		port: port,
@@ -59,7 +59,21 @@ func (ip *getaddr) ExternalAddr() *getaddr {
 }
 
 func (addr *getaddr) GetIPstr() string {
-	return fmt.Sprintf("%s:%d", addr.ip.String(), addr.port)
+	if addr.ip.To4() != nil {
+		return fmt.Sprintf("%s:%d", addr.ip.String(), addr.port)
+	}
+	return fmt.Sprintf("[%s]:%d", addr.ip.String(), addr.port)
+}
+
+func FormatAddr(ip string, port int) string {
+	parsedIP := net.ParseIP(ip)
+	if parsedIP == nil {
+		return fmt.Sprintf("%s:%d", ip, port)
+	}
+	if parsedIP.To4() != nil {
+		return fmt.Sprintf("%s:%d", ip, port)
+	}
+	return fmt.Sprintf("[%s]:%d", ip, port)
 }
 
 func (addr *getaddr) GetTCPAddr() *net.TCPAddr {

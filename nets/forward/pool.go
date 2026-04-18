@@ -135,7 +135,7 @@ func (p *ConnPool) Get() (*pooledConn, error) {
 
 // dial 拨号连接到目标服务器
 func (p *ConnPool) dial() (net.Conn, error) {
-	addr := fmt.Sprintf("%s:%d", p.targetIP, p.targetPort)
+	addr := formatAddr(p.targetIP, p.targetPort)
 	return net.DialTimeout("tcp", addr, p.dialTimeout)
 }
 
@@ -191,4 +191,15 @@ type PoolStats struct {
 	Idle      int // 当前空闲连接数
 	MaxIdle   int // 最大空闲连接数
 	MaxActive int // 最大活跃连接数
+}
+
+func formatAddr(ip string, port int) string {
+	parsedIP := net.ParseIP(ip)
+	if parsedIP == nil {
+		return fmt.Sprintf("%s:%d", ip, port)
+	}
+	if parsedIP.To4() != nil {
+		return fmt.Sprintf("%s:%d", ip, port)
+	}
+	return fmt.Sprintf("[%s]:%d", ip, port)
 }

@@ -155,7 +155,7 @@ func NewTCPProxy(config Config) *TCPProxy {
 
 // Start 启动TCP代理服务,阻塞直到收到停止信号
 func (p *TCPProxy) Start() error {
-	addr := fmt.Sprintf(":%s", p.port)
+	addr := fmt.Sprintf(":%d", p.port)
 	if p.port == 0 {
 		addr = ":8080"
 	}
@@ -340,7 +340,7 @@ func (p *TCPProxy) handleConnection(clientConn net.Conn) {
 // dialWithRetry 拨号连接到目标服务器,失败时重试
 func (p *TCPProxy) dialWithRetry() (net.Conn, error) {
 	var lastErr error
-	addr := fmt.Sprintf("%s:%d", p.targetIP, p.targetPort)
+	addr := formatAddr(p.targetIP, p.targetPort)
 	dialer := &net.Dialer{Timeout: p.dialTimeout}
 
 	for i := 0; i < p.config.MaxRetries; i++ {

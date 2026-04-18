@@ -1,7 +1,6 @@
 package forward
 
 import (
-	"fmt"
 	"net"
 	"sync/atomic"
 	"time"
@@ -74,7 +73,7 @@ func (hc *HealthChecker) Start(ctx <-chan struct{}) {
 
 // check 执行一次健康检查,尝试连接目标服务器
 func (hc *HealthChecker) check() {
-	addr := fmt.Sprintf("%s:%d", hc.targetIP, hc.targetPort)
+	addr := formatAddr(hc.targetIP, hc.targetPort)
 	conn, err := net.DialTimeout("tcp", addr, hc.timeout)
 	if err != nil {
 		hc.healthy.Store(false)

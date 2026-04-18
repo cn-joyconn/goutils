@@ -1,7 +1,6 @@
 package forward
 
 import (
-	"io"
 	"log"
 	"net"
 	"sync"
@@ -257,9 +256,4 @@ func isTimeoutError(err error) bool {
 		return netErr.Timeout()
 	}
 	return false
-}
-
-// isEOF 判断错误是否为EOF
-func isEOF(err error) bool {
-	return err == io.EOF
 }
