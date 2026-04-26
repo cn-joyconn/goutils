@@ -87,9 +87,15 @@ func TestTcpForwardByMyLog(t *testing.T) {
 		}
 	}()
 
-	if err := proxy.Start(); err != nil {
-		log.Fatalf("Proxy start failed: %v", err)
-	}
+	go func() {
+		if err := proxy.Start(); err != nil {
+			log.Fatalf("Proxy start failed: %v", err)
+		}
+	}()
+
+	var input string
+	fmt.Scan(&input)
+	log.Fatalf(input)
 }
 
 // 实现 Logger 接口

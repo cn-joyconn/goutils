@@ -315,23 +315,20 @@ func (p *TCPProxy) handleConnection(clientConn net.Conn) {
 	wg.Add(2)
 
 	stopChan := make(chan struct{})
+	closeOnce := sync.Once{}
 
 	// 客户端 -> 目标服务器
 	go func() {
 		defer wg.Done()
 		p.forwardData(clientConn, targetConn, "client->target", conn)
-		close(stopChan)
+		closeOnce.Do(func() { close(stopChan) })
 	}()
 
 	// 目标服务器 -> 客户端
 	go func() {
 		defer wg.Done()
 		p.forwardData(targetConn, clientConn, "target->client", conn)
-		select {
-		case <-stopChan:
-		default:
-			close(stopChan)
-		}
+		closeOnce.Do(func() { close(stopChan) })
 	}()
 
 	wg.Wait()
