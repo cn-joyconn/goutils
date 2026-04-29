@@ -128,12 +128,14 @@ func (c *connection) Close() error {
 	}
 	// 关闭目标服务器连接
 	if c.targetConn != nil {
-		if err := c.targetConn.Close(); err != nil {
-			errs = append(errs, err)
+		if c.poolRef != nil {
+			// 使用连接池时,释放回池中而不是直接关闭
+			c.poolRef.Release(c.targetConn)
+		} else {
+			if err := c.targetConn.Close(); err != nil {
+				errs = append(errs, err)
+			}
 		}
-	} else if c.poolRef != nil {
-		// 如果有连接池引用,释放连接到池中
-		c.poolRef.Release(nil)
 	}
 
 	if len(errs) > 0 {

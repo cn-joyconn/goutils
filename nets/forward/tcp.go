@@ -267,12 +267,13 @@ func (p *TCPProxy) handleConnection(clientConn net.Conn) {
 	defer func() {
 		p.connMu.Lock()
 		delete(p.activeConns, addr)
+		remaining := len(p.activeConns)
 		p.connMu.Unlock()
 
 		duration := time.Since(startTime)
 		conn.Close()
 		p.logger.Info("Connection closed: %s (duration: %v, remaining: %d)",
-			addr, duration, len(p.activeConns))
+			addr, duration, remaining)
 	}()
 
 	// 建立到目标服务器的连接
