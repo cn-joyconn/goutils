@@ -7,9 +7,18 @@ import (
 	"path/filepath"
 )
 
+var (
+	selfDir = ""
+	setDir  = false
+)
+
+func SetSelfPath(_path string) {
+	selfDir = _path
+	setDir = true
+}
+
 // SelfPath gets compiled executable file absolute path
 func SelfPath() string {
-
 	// fmt.Println(filepath.Abs(""))
 	path, _ := filepath.Abs(os.Args[0])
 	return path
@@ -17,6 +26,9 @@ func SelfPath() string {
 
 // SelfDir gets compiled executable file directory
 func SelfDir() string {
+	if setDir {
+		return selfDir
+	}
 	return filepath.Dir(SelfPath())
 	// currentDir, err := os.Getwd()
 	// if err == nil {
